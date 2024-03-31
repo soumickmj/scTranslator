@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import scipy
+from tqdm import tqdm
+import pandas as pd
+import sys
 import random
 import numpy as np
 from torch.utils.data import Dataset
@@ -22,7 +26,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     loss2 = nn.CosineSimilarity(dim=0, eps=1e-8)
     train_loss = 0
     train_ccc = 0
-    for batch_idx, (x, y) in enumerate(train_loader):
+    for batch_idx, (x, y) in tqdm(enumerate(train_loader)):
         #--- Extract Feature ---#
         RNA_geneID = torch.tensor(x[:,1].tolist()).long().to(device)
         Protein_geneID = torch.tensor(y[:,1].tolist()).long().to(device)
@@ -63,7 +67,12 @@ def test(model, device, test_loader):
     y_hat_all = []
     y_all = []
     with torch.no_grad():
-        for x, y in test_loader:
+        for x, y in tqdm(test_loader):
+            if x.shape[-1] > 20000 or y.shape[-1] > 1000: #TODO: make  them flags
+                if test_loader.batch_size != 1:
+                    sys.exit("test currently implemented only for batch size 1, if x>20000 or y>1000")
+                x, y = create_sliding_window_batches(x, y, 20000, 1000) 
+
             #--- Extract Feature ---#
             RNA_geneID = torch.tensor(x[:,1].tolist()).long().to(device)
             Protein_geneID = torch.tensor(y[:,1].tolist()).long().to(device)
@@ -188,3 +197,60 @@ def attention_normalize(weights):
         W_max = weights.iloc[i].max()
         weights.iloc[i] = (weights.iloc[i]-W_min)/(W_max-W_min)
     return(weights)
+
+#################################################
+#---- Additional functions added by Soumick ----#
+#################################################
+
+#update the input data files, to handle any custom file instead of a the strict format of this project
+def update_adata(adata, args):
+    if scipy.sparse.issparse(adata.X):
+        adata.X = adata.X.toarray()
+    if args.id_col:
+        adata.var = adata.var.rename({args.id_col: "my_Id"}, axis=1)
+    if args.index_col:
+        adata.var = adata.var.reset_index().set_index(args.index_col)
+        if args.old_index_col_name:
+            adata.var = adata.var.rename({"index": args.old_index_col_name}, axis=1)
+    if args.filter_noIDs:
+        adata = adata[:, adata.var['my_Id'] != -1]
+    return adata
+
+#Slinding window to handle large input data
+def create_sliding_window_batches(input_tensor, target_tensor, max_input_window, target_batch_size):
+    num_target_batches = -(-target_tensor.shape[-1] // target_batch_size)  # Ceiling division
+    num_input_batches = -(-input_tensor.shape[-1] // max_input_window)  # Ceiling division
+    if num_target_batches == 1:
+        step_size = input_tensor.shape[-1] - max_input_window
+    else:
+        step_size = -(-(input_tensor.shape[-1] - max_input_window) // (num_target_batches-1)) 
+
+    input_batches = []
+    target_batches = []
+
+    for i in range(max(num_target_batches, num_input_batches)):
+        if num_target_batches == 1:
+            target_start_idx = 0
+            target_end_idx = target_tensor.shape[-1]
+        else:
+            target_start_idx = i * target_batch_size
+            target_end_idx = min((i + 1) * target_batch_size, target_tensor.shape[-1])
+        
+        target_batch = target_tensor[...,target_start_idx:target_end_idx]
+        if target_batch.shape[-1] < target_batch_size:
+            pad_size = list(target_batch.shape)
+            pad_size[-1] = target_batch_size - target_batch.shape[-1]
+            target_batch = torch.cat([target_batch, torch.zeros(pad_size, dtype=target_batch.dtype, device=target_batch.device)], dim=-1)
+        target_batches.append(target_batch)
+        
+        input_start_idx = max(0, min(i * step_size, target_start_idx))
+        if input_start_idx+max_input_window > input_tensor.shape[-1]:
+            input_start_idx = max(0, input_tensor.shape[-1] - max_input_window)
+        input_end_idx = min(input_start_idx + max_input_window, input_tensor.shape[-1])
+        if input_end_idx < target_end_idx:
+            input_end_idx = min(input_tensor.shape[-1], target_end_idx)
+
+        input_batch = input_tensor[...,input_start_idx:input_end_idx]
+        input_batches.append(input_batch)
+
+    return torch.cat(input_batches, dim=0), torch.cat(target_batches, dim=0)
