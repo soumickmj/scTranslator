@@ -26,7 +26,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     loss2 = nn.CosineSimilarity(dim=0, eps=1e-8)
     train_loss = 0
     train_ccc = 0
-    for batch_idx, (x, y) in tqdm(enumerate(train_loader)):
+    for idx, (x, y) in enumerate(tqdm(train_loader)):
         #--- Extract Feature ---#
         RNA_geneID = torch.tensor(x[:,1].tolist()).long().to(device)
         Protein_geneID = torch.tensor(y[:,1].tolist()).long().to(device)
@@ -45,11 +45,15 @@ def train(args, model, device, train_loader, optimizer, epoch):
         y = torch.where(torch.isnan(y), torch.full_like(y, 0), y)
 
         loss = F.mse_loss(y_hat[pro_mask], y[pro_mask])
-        train_loss += loss.item()
+        loss_step = loss.item()
+        train_loss += loss_step
         
-        train_ccc += loss2(y_hat[pro_mask], y[pro_mask]).item()
+        ccc_step = loss2(y_hat[pro_mask], y[pro_mask]).item()
+        train_ccc += ccc_step
         loss.backward()
         optimizer.step()
+
+        args.wandbrun.log({"loss_step": loss_step, "ccc_step": ccc_step}, step=(epoch*len(train_loader))+idx)
     
     train_loss /= len(train_loader)
     train_ccc /= len(train_loader)

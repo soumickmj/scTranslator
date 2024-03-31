@@ -8,6 +8,8 @@ import warnings
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 
+import wandb
+
 
 import torch.optim as optim
 import scanpy as sc
@@ -23,7 +25,7 @@ from utils import *
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Example')
-    parser.add_argument('--batch_size', type=int, default=1, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=12, metavar='N',
                         help='input batch size for each GPU training (default: 1)')
     parser.add_argument('--test_batch_size', type=int, default=32,
                         help='input batch size for testing (default: 4)')
@@ -99,6 +101,15 @@ def main():
                         help='If it is not blank, then the index will be reset and this column will be used as the index column.')  
     parser.add_argument('--old_index_col_name', default="gene_ids",
                         help='Only if index_col is supplied, this will be used to rename the index column. If blank, the index column will not be renamed after restting the index.')  
+    
+    
+    parser.add_argument('--wnbproject', default='SingleCell',
+                        help='WandB: Name of the project')
+    parser.add_argument('--wnbgroup', default='scTranslator',
+                        help='WandB: Name of the group')
+    parser.add_argument('--wnbentity', default='glastonbury-group',
+                        help='WandB: Name of the entity')
+    
     args = parser.parse_args()
     warnings.filterwarnings('ignore')
     #########################
@@ -127,6 +138,15 @@ def main():
     device = torch.device("cuda", args.local_rank)
     print(device)
     torch.cuda.set_device(args.local_rank)
+
+    wandbrun = wandb.init(
+                            name=args.tag_FT, id=args.tag_FT, 
+                            project=args.wnbproject,
+                            group=args.wnbgroup,
+                            entity=args.wnbentity,
+                            config=args,
+                        )
+    args.wandbrun = wandbrun
 
     ###########################
     #--- Prepare The Model ---#
@@ -263,6 +283,7 @@ def main():
         
         train_loss, train_ccc = train(args, model, device, train_loader, optimizer, epoch)
         scheduler.step()
+        args.wandbrun.log({"loss_epoch": train_loss, "ccc_epoch": train_ccc}, step=epoch)
         torch.cuda.empty_cache()
 
     print("Fine-tuning complete. Saving the model..")
