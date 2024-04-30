@@ -29,7 +29,7 @@ def main():
                         help='input batch size for each GPU training (default: 1)')
     parser.add_argument('--test_batch_size', type=int, default=32,
                         help='input batch size for testing (default: 4)')
-    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+    parser.add_argument('--epochs', type=int, default=1, metavar='N',
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=2*1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
@@ -76,9 +76,9 @@ def main():
     parser.add_argument('--n_workers', type=int, default=8,
                         help='Number of workers to use.')  
     
-    parser.add_argument('--tag_FT', default='aliceDS0_FT_normRNA_normPro',
+    parser.add_argument('--tag_FT', default='aliceDS0_FT_1ep_normRNA_normPro',
                         help='tag to be used to store the fine-tuned model')
-    parser.add_argument('--tag_test', default='aliceDS0_FT_normRNA_normPro_test',
+    parser.add_argument('--tag_test', default='aliceDS0_FT_1ep_normRNA_normPro_test_normRNA_normPro',
                         help='tag to be used to store the test results')
     
     parser.add_argument('--RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/Project_files_all/fine_tuning/RNA_all_scrublet.scTranslatorIDs.filtered.train.h5ad',
@@ -126,6 +126,7 @@ def main():
     if args.local_rank == -1:
         is_distributed = False
         args.local_rank = 0
+        rank = 0
         print("DDP Disabled!")
     else:
         # Initializes the distributed environment to help process communication
