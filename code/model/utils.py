@@ -41,7 +41,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         #--- Compute Performance Metric ---#
         y_hat = torch.squeeze(y_hat)
-        y_hat = torch.where(torch.isnan(y), torch.full_like(y_hat, 0), y_hat)
+        y_hat = torch.where(torch.isnan(y_hat), torch.full_like(y_hat, 0), y_hat)
         y = torch.where(torch.isnan(y), torch.full_like(y, 0), y)
 
         loss = F.mse_loss(y_hat[pro_mask], y[pro_mask])
@@ -90,7 +90,142 @@ def test(model, device, test_loader):
 
             #--- Compute Performance Metric ---#
             y_hat = torch.squeeze(y_hat)
-            y_hat = torch.where(torch.isnan(y), torch.full_like(y_hat, 0), y_hat)
+            y_hat = torch.where(torch.isnan(y_hat), torch.full_like(y_hat, 0), y_hat)
+            y = torch.where(torch.isnan(y), torch.full_like(y, 0), y)
+            test_loss += F.mse_loss(y_hat[pro_mask], y[pro_mask]).item()
+            test_ccc += loss2(y_hat[pro_mask], y[pro_mask]).item()
+
+            if device == 'cpu':
+                y_hat_all.extend(y_hat[pro_mask].view(y_hat.shape[0], -1).numpy().tolist())
+                y_all.extend(y[pro_mask].view(y_hat.shape[0], -1).numpy().tolist())
+            else:
+                y_hat_all.extend(y_hat[pro_mask].view(y_hat.shape[0], -1).detach().cpu().numpy().tolist())
+                y_all.extend(y[pro_mask].view(y_hat.shape[0], -1).detach().cpu().numpy().tolist())
+       
+
+    test_loss /= len(test_loader)
+    test_ccc /= len(test_loader)
+    return test_loss, test_ccc, np.array(y_hat_all), np.array(y_all)
+
+###################################################################
+#------------ Train function for Translator KD -------------------#
+###################################################################
+def trainKD(args, model, base_model, device, train_loader, optimizer, epoch):
+    model.train()
+    loss2 = nn.CosineSimilarity(dim=0, eps=1e-8)
+    train_loss = 0
+    train_ccc = 0
+    for idx, (x, y) in enumerate(tqdm(train_loader)):
+        #--- Extract Feature ---#
+        RNA_geneID = torch.tensor(x[:,1].tolist()).long().to(device)
+        Protein_geneID = torch.tensor(y[:,1].tolist()).long().to(device)
+        rna_mask = torch.tensor(x[:,2].tolist()).bool().to(device)
+        pro_mask = torch.tensor(y[:,2].tolist()).bool().to(device)
+        x = torch.tensor(x[:,0].tolist(), dtype=torch.float32).to(device)
+        y = torch.tensor(y[:,0].tolist(), dtype=torch.float32).to(device)
+
+        #--- Prediction ---#
+        optimizer.zero_grad()
+        _, y_hat, z_trans = model(x, RNA_geneID, Protein_geneID, enc_mask=rna_mask, dec_mask=pro_mask)
+        with torch.no_grad():
+            _, _, z_trans_base = base_model(x, RNA_geneID, Protein_geneID, enc_mask=rna_mask, dec_mask=pro_mask)
+
+        #--- Compute Performance Metric ---#
+        y_hat = torch.squeeze(y_hat)
+        y_hat = torch.where(torch.isnan(y_hat), torch.full_like(y_hat, 0), y_hat)
+        y = torch.where(torch.isnan(y), torch.full_like(y, 0), y)
+
+        loss = F.mse_loss(y_hat[pro_mask], y[pro_mask])
+        loss_step = loss.item()
+        train_loss += loss_step
+        
+        ccc_step = loss2(y_hat[pro_mask], y[pro_mask]).item()
+        train_ccc += ccc_step
+        loss.backward()
+        optimizer.step()
+
+        args.wandbrun.log({"loss_step": loss_step, "ccc_step": ccc_step}, step=(epoch*len(train_loader))+idx)
+    
+    train_loss /= len(train_loader)
+    train_ccc /= len(train_loader)
+    print('-'*15)
+    print('--- Epoch {} ---'.format(epoch), flush=True)
+    print('-'*15)
+    print('Training set: Average loss: {:.4f}, Average ccc: {:.4f}'.format(train_loss, train_ccc), flush=True)
+    return train_loss, train_ccc
+
+###################################################################
+#------------ Train & Test Function for the LLM models------------#
+################################################################### 
+def trainLLM(args, model, device, train_loader, tokeniser, optimiser, epoch):
+    model.train()
+    train_loss = 0
+    for idx, (rna_data, protein_data) in enumerate(tqdm(train_loader)):
+        #--- Process data ---#
+        rna_values, rna_genes, rna_mask = rna_data[0,0], rna_data[0,1], rna_data[0,2]
+        pro_values, pro_genes, pro_mask = protein_data[0,0], protein_data[0,1], protein_data[0,2]
+
+        rna_values = rna_values[rna_mask == 1]
+        pro_values = pro_values[pro_mask == 1]
+
+        rna_sequence = ' '.join([f"{int(rID)}:{value}" for rID, value in zip(rna_genes, rna_values)])
+        pro_instruction = ' '.join([f"P{int(pID)}" for pID in pro_genes[pro_mask == 1]])  # Instructional part
+
+        full_sequence = f"{rna_sequence} Predict {pro_instruction}"
+        encoded_inp = tokeniser(full_sequence, return_tensors="pt", padding="max_length", truncation=False, max_length=args.enc_max_seq_len).to(device)
+
+        protein_sequence = ' '.join([f"{int(pID)}:{value}" for pID, value in zip(pro_genes, pro_values)])
+        encoded_out = tokeniser(protein_sequence, return_tensors="pt", padding="max_length", truncation=False, max_length=args.dec_max_seq_len).to(device)
+
+        #--- Prediction ---#
+        optimiser.zero_grad()
+        outputs = model(input_ids=encoded_inp.input_ids, labels=encoded_out.input_ids)
+        loss = outputs.loss
+
+        #--- Compute Performance Metric ---#
+        loss_step = loss.item()
+        train_loss += loss_step
+        loss.backward()
+        optimiser.step()
+
+        args.wandbrun.log({"loss_step": loss_step}, step=(epoch*len(train_loader))+idx)
+    
+    train_loss /= len(train_loader)
+    train_ccc /= len(train_loader)
+    print('-'*15)
+    print('--- Epoch {} ---'.format(epoch), flush=True)
+    print('-'*15)
+    print('Training set: Average loss: {:.4f}'.format(train_loss), flush=True)
+    return train_loss
+    
+def testLLM(model, device, test_loader):
+    model.eval()
+    loss2 = nn.CosineSimilarity(dim=0, eps=1e-8)
+    test_loss = 0
+    test_ccc = 0
+    y_hat_all = []
+    y_all = []
+    with torch.no_grad():
+        for x, y in tqdm(test_loader):
+            if x.shape[-1] > 20000 or y.shape[-1] > 1000: #TODO: make  them flags
+                if test_loader.batch_size != 1:
+                    sys.exit("test currently implemented only for batch size 1, if x>20000 or y>1000")
+                x, y = create_sliding_window_batches(x, y, 20000, 1000) 
+
+            #--- Extract Feature ---#
+            RNA_geneID = torch.tensor(x[:,1].tolist()).long().to(device)
+            Protein_geneID = torch.tensor(y[:,1].tolist()).long().to(device)
+            rna_mask = torch.tensor(x[:,2].tolist()).bool().to(device)
+            pro_mask = torch.tensor(y[:,2].tolist()).bool().to(device)
+            x = torch.tensor(x[:,0].tolist(), dtype=torch.float32).to(device)
+            y = torch.tensor(y[:,0].tolist(), dtype=torch.float32).to(device)
+
+            #--- Prediction ---#
+            _, y_hat = model(x, RNA_geneID, Protein_geneID, enc_mask=rna_mask, dec_mask=pro_mask)
+
+            #--- Compute Performance Metric ---#
+            y_hat = torch.squeeze(y_hat)
+            y_hat = torch.where(torch.isnan(y_hat), torch.full_like(y_hat, 0), y_hat)
             y = torch.where(torch.isnan(y), torch.full_like(y, 0), y)
             test_loss += F.mse_loss(y_hat[pro_mask], y[pro_mask]).item()
             test_ccc += loss2(y_hat[pro_mask], y[pro_mask]).item()
