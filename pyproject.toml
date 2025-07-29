@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "sctranslator"
+version = "0.2.1"
+description = "Original repo \"scTranslator: A pre-trained large generative model for translating single-cell transcriptome to proteome\", extended by Dr Soumick Chatterjee (Human Technopole, Milan, Italy)"
+authors = ["soumick.chatterjee <soumick.chatterjee@fht.org>"]
+license = "The copyright holder for this project is Tencent AI Lab"
+readme = "README.md"
+
+[[tool.poetry.source]]
+name = "pytorch_cuda_118"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "explicit" # Or "supplemental"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+local-attention = "^1.4.3"
+numpy = "^1.21.5"
+pandas = "^1.2.4"
+scanpy = "^1.9.1"
+scikit-learn = "^1.1.1"
+scipy = "^1.6.2"
+torch = { version = "2.7.1", source = "pytorch_cuda_118" }
+torchvision = { version = "*", source = "pytorch_cuda_118" }
+torchaudio = { version = "*", source = "pytorch_cuda_118" }
+wandb = "^0.20.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
