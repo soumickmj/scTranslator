@@ -111,7 +111,7 @@ def main():
     # create new AnnData object
     filtered_adata = anndata.AnnData(X=new_X, var=new_var, obs=adata.obs)
 
-    filtered_adata.write(data_file_path + '_mapped.h5ad')
+    filtered_adata.write(data_file_path + '_mapped_scTranslator.h5ad')
     print('# of genes after mapping:' , filtered_adata.n_vars)
     print('Gene mapping completed!')
 

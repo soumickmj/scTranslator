@@ -88,16 +88,8 @@ if [[ $programmePath == *.py ]]; then
     #Activate conda environment
     source /home/${USER}/.bashrc
     conda activate $conda
-
-    IFS=';' read -ra ADDR <<< "$args"
-    for i in "${ADDR[@]}"; do
-      echo "launching with args: $i"
-      python $programmePath $i &
-      sleep 77
-    done
-    wait
-
-    echo "All Done"
+  
+    srun python $programmePath $args
     
 elif [[ $programmePath == *.sh ]]; then
     echo "Starting the exection of the Bash script: $programmePath";

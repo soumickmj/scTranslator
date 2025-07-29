@@ -9,7 +9,7 @@ import pandas as pd
 
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
-sys.path.append(f"{current_dir}/model") 
+sys.path.append(f"{os.path.dirname(current_dir)}/model") 
 from performer_enc_dec import *
 from utils import *
 
@@ -69,7 +69,7 @@ def main():
     ###########################
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('device',device)
-    model = torch.load(args.pretrain_checkpoint, map_location=torch.device(device))
+    model = torch.load(args.pretrain_checkpoint, map_location=torch.device(device), weights_only=False)
     # model = model.to(device)
 
     ##########################
@@ -135,9 +135,17 @@ def main():
     y_pred.to_csv(file_path+'/y_pred'+str(args.repeat)+'.tsv', sep='\t')
     y_truth.to_csv(file_path+'/y_truth'+str(args.repeat)+'.tsv', sep='\t')
 
+    summary_lines = [
+        f'single cell {args.enc_max_seq_len} RNA To {args.dec_max_seq_len} Protein on dataset {args.tag_test}',
+        f'Overall performance in repeat_{args.repeat} costTime: {time.time() - start_time:.4f}s',
+        f'{args.tag_test} Test Set: AVG mse {np.mean(log_all["test_loss"][:args.repeat]):.4f}, AVG ccc {np.mean(log_all["test_ccc"][:args.repeat]):.4f}'
+    ]
+
     print('-'*40)
-    print('single cell '+str(args.enc_max_seq_len)+' RNA To '+str(args.dec_max_seq_len)+' Protein on dataset'+args.tag_test)
-    print('Overall performance in repeat_%d costTime: %.4fs' % ( args.repeat, time.time() - start_time))
-    print('Test Set: AVG mse %.4f, AVG ccc %.4f' % (np.mean(log_all['test_loss'][:args.repeat]), np.mean(log_all['test_ccc'][:args.repeat])))
+    with open(os.path.join(file_path, 'summary'+str(args.repeat)+'.txt'), 'a') as f:
+        for line in summary_lines:
+            print(line)
+            f.write(line + '\n')
+
 if __name__ == '__main__':
     main()

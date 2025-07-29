@@ -2,3 +2,4 @@ checkpoint/*
 result/*
 wandb/*
 *.pyc
+conda_env*

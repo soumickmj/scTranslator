@@ -65,9 +65,10 @@ done
 
 #set the default values for the commandline arguments
 root="${root:-/ssu/gassu/software/scTranslator/newV/scTranslator/}"
-programme="${programme:-code/stage3_fine-tune.py}"
+programme="${programme:-code/main_scripts/stage3_fine-tune.py}"
 args="${args:-}"
-conda="${conda:-/home/soumick.chatterjee/anaconda3/envs/torchHTBeta2V2}"
+conda="${conda:-/ssu/gassu/software/scTranslator/newV/scTranslator/conda_env}"
+#conda="${conda:-torchHTBeta2V2}"
 
 ###
 ###Start of the actual script, after reading all the arguments

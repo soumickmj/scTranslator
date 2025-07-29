@@ -3,7 +3,7 @@ import time
 import datetime
 import argparse
 import warnings
-
+import copy
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
@@ -21,11 +21,12 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
 sys.path.append(f"{os.path.dirname(current_dir)}/model") 
 from performer_enc_dec import *
+from perceiver_translator import *
 from utils import *
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Example')
-    parser.add_argument('--batch_size', type=int, default=12, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=8, metavar='N',
                         help='input batch size for each GPU training (default: 1)')
     parser.add_argument('--test_batch_size', type=int, default=32,
                         help='input batch size for testing (default: 4)')
@@ -95,7 +96,7 @@ def main():
     
     parser.add_argument('--filter_noIDs', type=int, default=1,
                         help='Whether or not to filter the elements without IDs (i.e. IDs set to -1).')  
-    parser.add_argument('--id_col', default="",
+    parser.add_argument('--id_col', default="scTranslator_id",
                         help='Which column to use as ID. If blank, my_Id column will be used.')    
     parser.add_argument('--index_col', default="",
                         help='If it is not blank, then the index will be reset and this column will be used as the index column.')  
@@ -163,7 +164,18 @@ def main():
         dec_heads=args.dec_heads,
         dec_max_seq_len=args.dec_max_seq_len
         )
-    model = torch.load(args.pretrain_checkpoint, weights_only=False)
+    base_model = torch.load(args.pretrain_checkpoint, weights_only=False)
+    
+    perceiver = PerceiverIOTranslator(input_emb_dim=args.dim,
+                                        output_emb_dim=args.dim,
+                                        num_input_tokens=args.enc_max_seq_len,
+                                        num_output_tokens=args.dec_max_seq_len,
+                                        perceiver_model_name='deepmind/language-perceiver')
+    model = perceiver4translator(copy.deepcopy(base_model), perceiver)
+    base_model.forward = custom_model_forward
+    base_model = base_model.to(device)
+    base_model.eval()
+
     # Resume training from breakpoints
     if args.resume == True:
         checkpoint = torch.load(args.path_checkpoint, weights_only=False)

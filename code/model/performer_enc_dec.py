@@ -206,6 +206,11 @@ class scPerformerEncDec(nn.Module):
         self.dec = dec
 
     def forward(self, seq_in, seq_inID, seq_outID, **kwargs):
+        #seq_in: RNA values following the shape [batch_size x number of origin RNA genes]
+        #seq_inID: RNA gene IDs following the shape [batch_size x number of origin RNA genes]
+        #seq_outID: protein IDs following the shape [batch_size x number of origin proteins]
+        #number of origin RNA genes and number of origin proteins here are set to 20k and 1k, respectively
+        #kwargs: is a dict, containing enc_mask and dec_mask, telling us which tokens to ignore (zero-padded tokens)
         enc_kwargs, dec_kwargs, kwargs = extract_and_set_enc_dec_kwargs(kwargs)
         encodings = self.enc(seq_in, seq_inID, return_encodings = True, **enc_kwargs)# batch_size, input_seq_lenth, dim
         seq_out = self.translator(encodings.transpose(1,2).contiguous()).transpose(1,2).contiguous() # batch_size, out_seq_lenth, dim 

@@ -21,15 +21,16 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
 sys.path.append(f"{os.path.dirname(current_dir)}/model") 
 from performer_enc_dec import *
+from perceiver_translator import *
 from utils import *
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Example')
-    parser.add_argument('--batch_size', type=int, default=12, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=8, metavar='N',
                         help='input batch size for each GPU training (default: 1)')
     parser.add_argument('--test_batch_size', type=int, default=32,
                         help='input batch size for testing (default: 4)')
-    parser.add_argument('--epochs', type=int, default=1, metavar='N',
+    parser.add_argument('--epochs', type=int, default=25, metavar='N',
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=2*1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
@@ -67,18 +68,18 @@ def main():
                         help='sequence length of decoder')
     parser.add_argument('--fix_set', action='store_false',
                         help='fix (aligned) or disordering (un-aligned) dataset')
-    parser.add_argument('--pretrain_checkpoint', default='checkpoint/stage2_scTranslatorV2_2M.pt',
+    parser.add_argument('--pretrain_checkpoint', default='checkpoint/stage2_scTranslatorV2_10K.pt',
                         help='path for loading the pretrain checkpoint')
     parser.add_argument('--resume', default=False, help='resume training from breakpoint')
     parser.add_argument('--path_checkpoint', default='checkpoint/stage2_single-cell_scTranslator.pt',
                         help='path for loading the resume checkpoint (need specify)')
     
     parser.add_argument('--n_workers', type=int, default=8,
-                        help='Number of workers to use.')  
-    
-    parser.add_argument('--tag_FT', default='prova_scV2_2M_Alice_20250204_Lasry_FT_1ep',
+                        help='Number of workers to use.')
+
+    parser.add_argument('--tag_FT', default='scV2_Perceiver_10K_Alice_20250204_Lasry_FT_1ep',
                         help='tag to be used to store the fine-tuned model')
-    parser.add_argument('--tag_test', default='prova_scV2_2M_Alice_20250204_Lasry_FT_1ep_Alice_test',
+    parser.add_argument('--tag_test', default='scV2_Perceiver_10K_Alice_20250204_Lasry_FT_1ep_Alice_test',
                         help='tag to be used to store the test results')
     
     parser.add_argument('--RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/SRP340133/merged_h5ad_scTranslator/reprocessed_data/Lasry_reprocessed_data-RNA.scTranslator.h5ad',
@@ -95,7 +96,7 @@ def main():
     
     parser.add_argument('--filter_noIDs', type=int, default=1,
                         help='Whether or not to filter the elements without IDs (i.e. IDs set to -1).')  
-    parser.add_argument('--id_col', default="",
+    parser.add_argument('--id_col', default="scTranslator_id",
                         help='Which column to use as ID. If blank, my_Id column will be used.')    
     parser.add_argument('--index_col', default="",
                         help='If it is not blank, then the index will be reset and this column will be used as the index column.')  
@@ -164,6 +165,14 @@ def main():
         dec_max_seq_len=args.dec_max_seq_len
         )
     model = torch.load(args.pretrain_checkpoint, weights_only=False)
+    
+    perceiver = PerceiverIOTranslator(input_emb_dim=args.dim,
+                                        output_emb_dim=args.dim,
+                                        num_input_tokens=args.enc_max_seq_len,
+                                        num_output_tokens=args.dec_max_seq_len,
+                                        perceiver_model_name='deepmind/language-perceiver')
+    model = perceiver4translator(model, perceiver)
+
     # Resume training from breakpoints
     if args.resume == True:
         checkpoint = torch.load(args.path_checkpoint, weights_only=False)

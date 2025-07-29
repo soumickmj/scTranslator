@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=scTransTest
+#SBATCH --job-name=scFTSS
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=soumick.chatterjee@fht.org
 #SBATCH --partition=gpuq      # type of node we are using (cpuq or gpuq, this is not meant for interactive nodes)
@@ -65,10 +65,9 @@ done
 
 #set the default values for the commandline arguments
 root="${root:-/ssu/gassu/software/scTranslator/newV/scTranslator/}"
-programme="${programme:-code/main_scripts/stage3_inference_without_finetune.py}"
+programme="${programme:-code/stage3_fine-tune_subsetpros.py}"
 args="${args:-}"
 conda="${conda:-/ssu/gassu/software/scTranslator/newV/scTranslator/conda_env}"
-#conda="${conda:-torchHTBeta2V2}"
 
 ###
 ###Start of the actual script, after reading all the arguments
@@ -88,16 +87,8 @@ if [[ $programmePath == *.py ]]; then
     #Activate conda environment
     source /home/${USER}/.bashrc
     conda activate $conda
-
-    IFS=';' read -ra ADDR <<< "$args"
-    for i in "${ADDR[@]}"; do
-      echo "launching with args: $i"
-      python $programmePath $i &
-      sleep 77
-    done
-    wait
-
-    echo "All Done"
+  
+    srun python $programmePath $args
     
 elif [[ $programmePath == *.sh ]]; then
     echo "Starting the exection of the Bash script: $programmePath";

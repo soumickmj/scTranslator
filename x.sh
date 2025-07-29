@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=scTransTest
+#SBATCH --job-name=gpumulrun
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=soumick.chatterjee@fht.org
 #SBATCH --partition=gpuq      # type of node we are using (cpuq or gpuq, this is not meant for interactive nodes)
@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:1          # number of GPUs (max=4)
 #SBATCH --chdir=/group/glastonbury/soumick/SLURM
 #SBATCH --output=gpurun_%x_%j.log
-#SBATCH --mem-per-cpu=16000Mb # RAM per CPU
+#SBATCH --mem-per-cpu=15000Mb # RAM per CPU
 
 exec 2>&1      # send errors into stdout stream
 env | grep -e MPI -e SLURM
@@ -40,7 +40,6 @@ function usage {
     echo ""
 }
 
-
 #function to handle the death of the script!
 function die {
     printf "Script failed: %s\n\n" "$1"
@@ -64,11 +63,10 @@ while [ $# -gt 0 ]; do
 done
 
 #set the default values for the commandline arguments
-root="${root:-/ssu/gassu/software/scTranslator/newV/scTranslator/}"
-programme="${programme:-code/main_scripts/stage3_inference_without_finetune.py}"
+root="${root:-/home/soumick.chatterjee/Codes/}"
+programme="${programme:-main.py}"
 args="${args:-}"
-conda="${conda:-/ssu/gassu/software/scTranslator/newV/scTranslator/conda_env}"
-#conda="${conda:-torchHTBeta2V2}"
+conda="${conda:-/home/soumick.chatterjee/anaconda3/envs/torchHTBeta2V2}"
 
 ###
 ###Start of the actual script, after reading all the arguments
@@ -84,7 +82,7 @@ programmePath=$programme
 
 if [[ $programmePath == *.py ]]; then
     echo "Starting the exection of the Python script: $programmePath inside the conda environment $conda";
-    
+
     #Activate conda environment
     source /home/${USER}/.bashrc
     conda activate $conda
@@ -98,17 +96,14 @@ if [[ $programmePath == *.py ]]; then
     wait
 
     echo "All Done"
-    
+
+
+
 elif [[ $programmePath == *.sh ]]; then
     echo "Starting the exection of the Bash script: $programmePath";
-  
-    srun bash $programmePath $args
     
-else
-  echo "Starting the exection of the programme: $programmePath"; 
-  
   srun $programmePath $args
-    
+
 fi
 
 

@@ -4,6 +4,7 @@ import datetime
 import argparse
 import warnings
 
+import thunder
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
@@ -19,7 +20,7 @@ from sklearn.model_selection import ShuffleSplit
 
 import sys 
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
-sys.path.append(f"{os.path.dirname(current_dir)}/model") 
+sys.path.append(f"{current_dir}/model") 
 from performer_enc_dec import *
 from utils import *
 
@@ -67,7 +68,7 @@ def main():
                         help='sequence length of decoder')
     parser.add_argument('--fix_set', action='store_false',
                         help='fix (aligned) or disordering (un-aligned) dataset')
-    parser.add_argument('--pretrain_checkpoint', default='checkpoint/stage2_scTranslatorV2_2M.pt',
+    parser.add_argument('--pretrain_checkpoint', default='checkpoint/stage2_single-cell_scTranslator.pt',
                         help='path for loading the pretrain checkpoint')
     parser.add_argument('--resume', default=False, help='resume training from breakpoint')
     parser.add_argument('--path_checkpoint', default='checkpoint/stage2_single-cell_scTranslator.pt',
@@ -76,26 +77,26 @@ def main():
     parser.add_argument('--n_workers', type=int, default=8,
                         help='Number of workers to use.')  
     
-    parser.add_argument('--tag_FT', default='prova_scV2_2M_Alice_20250204_Lasry_FT_1ep',
+    parser.add_argument('--tag_FT', default='tunderprova_aliceDS0_FT_1ep_normRNA_normPro',
                         help='tag to be used to store the fine-tuned model')
-    parser.add_argument('--tag_test', default='prova_scV2_2M_Alice_20250204_Lasry_FT_1ep_Alice_test',
+    parser.add_argument('--tag_test', default='aliceDS0_FT_1ep_normRNA_normPro_test',
                         help='tag to be used to store the test results')
     
-    parser.add_argument('--RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/SRP340133/merged_h5ad_scTranslator/reprocessed_data/Lasry_reprocessed_data-RNA.scTranslator.h5ad',
+    parser.add_argument('--RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/Project_files_all/fine_tuning/RNA_all_scrublet.scTranslatorIDs.filtered.train.h5ad',
     #parser.add_argument('--RNA_path', default='dataset/test/dataset1/GSM5008737_RNA_finetune_withcelltype.h5ad',
                         help='path for loading the rna')
-    parser.add_argument('--Pro_path', default='/ssu/gassu/shared/scTranslator/input_data/SRP340133/merged_h5ad_scTranslator/reprocessed_data/Lasry_reprocessed_data-ADT.scTranslator.h5ad',
+    parser.add_argument('--Pro_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/Project_files_all/fine_tuning/ADT_All.scTranslatorIDs.filtered.train.h5ad',
     #parser.add_argument('--Pro_path', default='dataset/test/dataset1/GSM5008738_protein_finetune_withcelltype.h5ad',
                         help='path for loading the protein')    
     
-    parser.add_argument('--tst_RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/RNA_all_scrublet.scTranslatorIDs.filtered.raw.h5ad',
+    parser.add_argument('--tst_RNA_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/Project_files_all/fine_tuning/RNA_all_scrublet.scTranslatorIDs.filtered.test.h5ad',
                         help='path for loading the test rna dataset. If blank, the rna dataset will be split into train-test')
-    parser.add_argument('--tst_Pro_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/ADT_All.scTranslatorIDs.filtered.log_norm.h5ad',
+    parser.add_argument('--tst_Pro_path', default='/ssu/gassu/shared/scTranslator/input_data/Alice_data/clean_data_from_sina/Project_files_all/fine_tuning/ADT_All.scTranslatorIDs.filtered.test.h5ad',
                         help='path for loading the test protein dataset. If blank, protein dataset will be split into train-test')    
     
     parser.add_argument('--filter_noIDs', type=int, default=1,
                         help='Whether or not to filter the elements without IDs (i.e. IDs set to -1).')  
-    parser.add_argument('--id_col', default="",
+    parser.add_argument('--id_col', default="scTranslator_id",
                         help='Which column to use as ID. If blank, my_Id column will be used.')    
     parser.add_argument('--index_col', default="",
                         help='If it is not blank, then the index will be reset and this column will be used as the index column.')  
@@ -163,10 +164,10 @@ def main():
         dec_heads=args.dec_heads,
         dec_max_seq_len=args.dec_max_seq_len
         )
-    model = torch.load(args.pretrain_checkpoint, weights_only=False)
+    model = torch.load(args.pretrain_checkpoint)
     # Resume training from breakpoints
     if args.resume == True:
-        checkpoint = torch.load(args.path_checkpoint, weights_only=False)
+        checkpoint = torch.load(args.path_checkpoint)
         model = checkpoint['net']
         model = model.to(device)
         if is_distributed:
@@ -272,6 +273,19 @@ def main():
     
     print("data ready")
 
+    ######################################
+    #---  Dino Thunder, Power Up, Ha! ---#
+    ######################################
+
+    jmodel = thunder.jit(model)
+    print("JIT: Model done")
+    joptimizer = thunder.jit(optimizer)
+    print("JIT: Optimiser done")
+    jtrain_loader = thunder.jit(train_loader)
+    print("JIT: Train Loader done")
+    jtrain = thunder.jit(train)
+    print("JIT: Train done")
+
     ###############################
     #---  Training and Testing ---#
     ###############################
@@ -282,7 +296,7 @@ def main():
             train_sampler.set_epoch(epoch)
             test_sampler.set_epoch(epoch)        
         
-        train_loss, train_ccc = train(args, model, device, train_loader, optimizer, epoch)
+        train_loss, train_ccc = train(args, jmodel, device, train_loader, optimizer, epoch)
         scheduler.step()
         args.wandbrun.log({"loss_epoch": train_loss, "ccc_epoch": train_ccc}, step=epoch)
         torch.cuda.empty_cache()
@@ -319,18 +333,11 @@ def main():
     y_pred.to_csv(file_path+'/y_pred'+str(args.repeat)+'.tsv', sep='\t')
     y_truth.to_csv(file_path+'/y_truth'+str(args.repeat)+'.tsv', sep='\t')
 
-    summary_lines = [
-    f'single cell {args.enc_max_seq_len} RNA To {args.dec_max_seq_len} Protein on dataset {args.tag_test}',
-    f'Overall performance on rank_{rank} in repeat_{args.repeat} costTime: {time.time() - start_time:.4f}s',
-    f'{args.tag_FT} Training Set: AVG mse {np.mean(log_all["train_loss"][:args.repeat]):.4f}, AVG ccc {np.mean(log_all["train_ccc"][:args.repeat]):.4f}',
-    f'{args.tag_test} Test Set: AVG mse {np.mean(log_all["test_loss"][:args.repeat]):.4f}, AVG ccc {np.mean(log_all["test_ccc"][:args.repeat]):.4f}'
-]
-
     print('-'*40)
-    with open(os.path.join(file_path, 'summary'+str(args.repeat)+'.txt'), 'a') as f:
-        for line in summary_lines:
-            print(line)
-            f.write(line + '\n')
+    print('single cell '+str(args.enc_max_seq_len)+' RNA To '+str(args.dec_max_seq_len)+' Protein on dataset'+args.tag_test)
+    print('Overall performance on rank_%d in repeat_%d costTime: %.4fs' % (rank, args.repeat, time.time() - start_time))
+    print('Training Set: AVG mse %.4f, AVG ccc %.4f' % (np.mean(log_all['train_loss'][:args.repeat]), np.mean(log_all['train_ccc'][:args.repeat])))
+    print('Test Set: AVG mse %.4f, AVG ccc %.4f' % (np.mean(log_all['test_loss'][:args.repeat]), np.mean(log_all['test_ccc'][:args.repeat])))
 
 if __name__ == '__main__':
     main()
