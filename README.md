@@ -141,3 +141,6 @@ This tool is developed in Tencent AI Lab.
 The copyright holder for this project is Tencent AI Lab.
 
 All rights reserved.
+
+# Citation
+Liu L, Li W, Wang F, et al. A pre-trained large generative model for translating single-cell transcriptomes to proteomes. Nature Biomedical Engineering, 2025.
